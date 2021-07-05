@@ -3,7 +3,7 @@ import datetime
 import time
 import random
 
-from threading import Lock
+from multiprocessing import Pool
 
 import baostock as bs
 
@@ -12,8 +12,6 @@ import tushare as ts
 
 import os
 from tqdm import tqdm
-
-mutex = Lock()
 
 
 class StockFactory:
@@ -112,8 +110,8 @@ class StockFactory:
             return 1
         start = stock_data["date"].tolist()[-1]
         end = datetime.date.today()
-        week = datetime.date.weekday(end) # 获得今天是星期几
-        if week == 5: # 周六 往前推一天
+        week = datetime.date.weekday(end)  # 获得今天是星期几
+        if week == 5:  # 周六 往前推一天
             end = end - datetime.timedelta(days=1)
         elif week == 6:
             end = end - datetime.timedelta(days=2)
@@ -130,6 +128,8 @@ class StockFactory:
             # 获取一条记录，将记录合并在一起
             data_list.append(rs.get_row_data())
         stock_data_plus = pd.DataFrame(data_list, columns=rs.fields)
+        if stock_data_plus["date"].values[-1] == start:
+            return 0
         # 表格合并
         stock_data = pd.concat([stock_data, stock_data_plus], ignore_index=True)
         # 删除包含Unnamed开头的列
@@ -188,6 +188,31 @@ class StockFactory:
         stock_data['dn'] = stock_data['ma20'] - stock_data['close'].rolling(window=20).std() * 2
         return stock_data
 
+    def multi_reformat(self):
+        query = {}
+        for index, row in self.stock_list.iterrows():
+            query[row["code"]] = row["name"]
+        p = Pool(16)
+        p.map(self.reformat, tqdm(query.items()))
+
+    # 数据有重复项目，需要重新构筑
+    def reformat(self, task):
+        stock_data = pd.read_csv("./stock_data/" + task[0] + "+" + task[1] + ".csv")
+        if stock_data.empty:
+            return
+        stock_data = stock_data.loc[:, ~stock_data.columns.str.contains("^Unnamed")]
+        count = 0
+        while True:
+            stock_data = stock_data.reset_index(drop=True)
+            if count + 1 == len(stock_data):
+                break
+            if stock_data.loc[count, "date"] == stock_data.loc[count + 1, "date"]:
+                stock_data = stock_data.drop(count + 1)
+                continue
+            count += 1
+        stock_data = self.calc(stock_data)
+        stock_data.to_csv("./stock_data/" + task[0] + "+" + task[1] + ".csv")
+
     def create_data(self):
         query = {}
         for index, row in self.stock_list.iterrows():
@@ -200,7 +225,7 @@ class StockFactory:
             try:
                 flag = self.update_data(code, name)
             except:
-                print(code,name)
+                print(code, name)
                 print("  - 该股票数据错误。")
                 flag = 1
                 exit(1)

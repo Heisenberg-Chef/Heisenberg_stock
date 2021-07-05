@@ -15,14 +15,46 @@ class Analysis:
             task[row["code"]] = row["name"]
         p = Pool(16)
         res = p.map(self.synthesis, tqdm(task.items()))
+        kdj20 = []
+        kdj50 = []
+        count = 0
         for i in res:
             if i != None:
                 for code, j in i.items():
                     for signal, rs in j.items():
                         if rs:
-                            print("股票代码：{}，股票名称：{}，符合{}买入点。 - 所属板块：{}。"
-                                  .format(code, self.list[self.list["code"] == code]["name"].values[0], signal,
+                            count += 1
+                            print("#{} 股票代码：{}，股票名称：{}，符合{}买入点。 - 所属板块：{}。"
+                                  .format(count,code, self.list[self.list["code"] == code]["name"].values[0], signal,
                                           self.list[self.list["code"] == code]["industry"].values[0]))
+                            if signal == "kdj20":
+                                kdj20.append(code)
+                            if signal == "kdj50":
+                                kdj50.append(code)
+        title = "序号,股票代码,股票名称,所属板块,上市日期,买入点算法名称"
+        text = title + "\n"
+        count = 0
+        for i in kdj20:
+            count += 1
+            text = text + "{},{},{},{},{},kdj20\n".format(count,
+                                                          i,
+                                                          self.list[self.list["code"] == i]["name"].values[0],
+                                                          self.list[self.list["code"] == i]["industry"].values[0],
+                                                          self.list[self.list["code"] == i]["list_date"].values[0],
+                                                          )
+
+        for i in kdj50:
+            count += 1
+            text = text + "{},{},{},{},{},kdj50\n".format(count,
+                                                          i,
+                                                          self.list[self.list["code"] == i]["name"].values[0],
+                                                          self.list[self.list["code"] == i]["industry"].values[0],
+                                                          self.list[self.list["code"] == i]["list_date"].values[0],
+                                                          )
+
+        with open("./res.csv","w") as f:
+            f.write(text)
+        print("*"*50)
 
     # 综合计算函数，用来一次读取多次计算使用
     def synthesis(self, task):
